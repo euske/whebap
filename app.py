@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 import sys
-import os
-import os.path
 import re
 import cgi
 
@@ -290,8 +288,11 @@ class WebApp(object):
                     kwargs[k] = fields.getvalue(k)
                 elif k in params:
                     kwargs[k] = params[k]
-            result = router.func(self, **kwargs)
-            break
+            try:
+                result = router.func(self, **kwargs)
+                break
+            except TypeError:
+                pass
         else:
             result = self.get_default(path, fields, environ)
         if not iterable(result):
@@ -324,6 +325,11 @@ def run_server(host, port, app):
 
 # run_cgi
 def run_cgi(app):
+    from wsgiref.handlers import CGIHandler
+    CGIHandler().run(app.run)
+
+# run_httpcgi: for cgi-httpd
+def run_httpcgi(app):
     from wsgiref.handlers import CGIHandler
     class HTTPCGIHandler(CGIHandler):
         def start_response(self, status, headers, exc_info=None):
@@ -362,7 +368,7 @@ def main(app, argv):
 
 ##  Sample App
 ##
-class MyApp(WebApp):
+class SampleApp(WebApp):
 
     @GET('/')
     def index(self):
@@ -371,9 +377,9 @@ class MyApp(WebApp):
         return
     
     @GET('/hello/(?P<name>.+)')
-    def index(self, name):
+    def hello(self, name):
         yield Response()
-        yield Template('<html><body><p>hello ${name}', name=name)
+        yield Template('<html><body><p>hello $(name)', name=name)
         return
     
     @GET('/search')
@@ -384,4 +390,4 @@ class MyApp(WebApp):
                        q=q)
         return
 
-if __name__ == '__main__': sys.exit(main(MyApp(), sys.argv))
+if __name__ == '__main__': sys.exit(main(SampleApp(), sys.argv))

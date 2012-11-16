@@ -4,6 +4,8 @@ Whebap is a Web application microframework which is:
  2. WSGI support.
  3. Routable.
  4. With a template function.
+ 5. Without any magic.
+ 6. For a tiny website (10-20 pages) developed by a single developer.
 
 Motivation:
 I looked at existing microframeworks but each of them has
