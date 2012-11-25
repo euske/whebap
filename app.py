@@ -1,9 +1,12 @@
 #!/usr/bin/env python
+##
+##  Whabapp - A Web application microframework
+##
+##  usage: $ python app.py -s localhost 8080
+##
 import sys
 import re
 import cgi
-
-debug = 0
 
 STATUS_CODE = {
     100: 'Continue',
@@ -90,23 +93,8 @@ def closable(obj):
 ##
 class Template(object):
 
-    _VARIABLE = re.compile(r'\$(\(\w+\)|\[\w+\]|<\w+>)')
-    
-    class Variable(object):
-        
-        def __init__(self, type, name):
-            self.type = type
-            self.name = name
-            return
-        
-        def __repr__(self):
-            if self.type == '(':
-                return '$(%s)' % self.name
-            elif self.type == '[':
-                return '$[%s]' % self.name
-            else:
-                return '$<%s>' % self.name
-    
+    debug = 0
+
     def __init__(self, *args, **kwargs):
         if '_copyfrom' in kwargs:
             _copyfrom = kwargs['_copyfrom']
@@ -155,17 +143,17 @@ class Template(object):
                 pass
             elif isinstance(value, Template):
                 if quote:
-                    if 2 <= debug:
+                    if 2 <= self.debug:
                         raise ValueError
-                    elif debug:
+                    elif self.debug:
                         yield '[ERROR: Template in a quoted context]'
                 else:
                     for x in value.render(codec=codec, **kwargs):
                         yield x
             elif isinstance(value, dict):
-                if 2 <= debug:
+                if 2 <= self.debug:
                     raise ValueError
-                elif debug:
+                elif self.debug:
                     yield '[ERROR: Dictionary included]'
             elif isinstance(value, basestring):
                 if quote:
@@ -183,9 +171,9 @@ class Template(object):
                 if quote:
                     yield q(unicode(value))
                 else:
-                    if 2 <= debug:
+                    if 2 <= self.debug:
                         raise ValueError
-                    elif debug:
+                    elif self.debug:
                         yield '[ERROR: Non-string object in a non-quoted context]'
             return
         for obj in self.objs:
@@ -211,6 +199,23 @@ class Template(object):
                 yield x
         return
 
+    _VARIABLE = re.compile(r'\$(\(\w+\)|\[\w+\]|<\w+>)')
+    
+    class Variable(object):
+        
+        def __init__(self, type, name):
+            self.type = type
+            self.name = name
+            return
+        
+        def __repr__(self):
+            if self.type == '(':
+                return '$(%s)' % self.name
+            elif self.type == '[':
+                return '$[%s]' % self.name
+            else:
+                return '$<%s>' % self.name
+    
 
 ##  Router
 ##
@@ -258,11 +263,18 @@ class NotFound(Response):
         Response.__init__(self, 404)
         return
 
+class InternalError(Response):
+
+    def __init__(self):
+        Response.__init__(self, 500)
+        return
+
 
 ##  WebApp
 ##
 class WebApp(object):
 
+    debug = 0
     codec = 'utf-8'
     
     def run(self, environ, start_response):
@@ -290,9 +302,12 @@ class WebApp(object):
                     kwargs[k] = params[k]
             try:
                 result = router.func(self, **kwargs)
-                break
             except TypeError:
-                pass
+                if 2 <= self.debug:
+                    raise
+                elif self.debug:
+                    result = [InternalError()]
+            break
         else:
             result = self.get_default(path, fields, environ)
         if not iterable(result):
@@ -341,7 +356,6 @@ def run_httpcgi(app):
 # main
 def main(app, argv):
     import getopt
-    global debug
     def usage():
         print 'usage: %s [-d] [-s] [host [port]]' % argv[0]
         return 100
@@ -350,9 +364,12 @@ def main(app, argv):
     except getopt.GetoptError:
         return usage()
     server = False
+    debug = 0
     for (k, v) in opts:
         if k == '-d': debug += 1
         elif k == '-s': server = True
+    Template.debug = debug
+    WebApp.debug = debug
     if server:
         host = ''
         port = 8080
