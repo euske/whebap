@@ -282,6 +282,7 @@ class WebApp(object):
         path = environ.get('PATH_INFO', '/')
         fp = environ.get('wsgi.input')
         fields = cgi.FieldStorage(fp=fp, environ=environ)
+        result = None
         for attr in dir(self):
             router = getattr(self, attr)
             if not isinstance(router, Router): continue
@@ -308,9 +309,9 @@ class WebApp(object):
                 elif self.debug:
                     result = [InternalError()]
             break
-        else:
+        if result is None:
             result = self.get_default(path, fields, environ)
-        if not iterable(result):
+        elif not iterable(result):
             result = [result]
         for obj in result:
             if isinstance(obj, Response):
