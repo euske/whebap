@@ -8,50 +8,6 @@ import sys
 import re
 import cgi
 
-STATUS_CODE = {
-    100: 'Continue',
-    101: 'Switching Protocols',
-    200: 'OK',
-    201: 'Created',
-    202: 'Accepted',
-    203: 'Non-Authoritative Information',
-    204: 'No Content',
-    205: 'Reset Content',
-    206: 'Partial Content',
-    300: 'Multiple Choices',
-    301: 'Moved Permanently',
-    302: 'Found',
-    303: 'See Other',
-    304: 'Not Modified',
-    305: 'Use Proxy',
-    306: 'Reserved',
-    307: 'Temporary Redirect',
-    400: 'Bad Request',
-    401: 'Unauthorized',
-    402: 'Payment Required',
-    403: 'Forbidden',
-    404: 'Not Found',
-    405: 'Method Not Allowed',
-    406: 'Not Acceptable',
-    407: 'Proxy Authentication Required',
-    408: 'Request Timeout',
-    409: 'Conflict',
-    410: 'Gone',
-    411: 'Length Required',
-    412: 'Precondition Failed',
-    413: 'Request Entity Too Large',
-    414: 'Request-URI Too Long',
-    415: 'Unsupported Media Type',
-    416: 'Requested Range Not Satisfiable',
-    417: 'Expectation Failed',
-    500: 'Internal Server Error',
-    501: 'Not Implemented',
-    502: 'Bad Gateway',
-    503: 'Service Unavailable',
-    504: 'Gateway Timeout',
-    505: 'HTTP Version Not Supported',
-    }
-
 # quote HTML metacharacters.
 def q(s):
     assert isinstance(s, basestring), s
@@ -242,8 +198,8 @@ def POST(pat): return Router.make_wrapper('POST', pat)
 ##
 class Response(object):
 
-    def __init__(self, status_code=200, content_type='text/html', **kwargs):
-        self.status_code = status_code
+    def __init__(self, status='200 OK', content_type='text/html', **kwargs):
+        self.status = status
         self.headers = [('Content-Type', content_type)]+kwargs.items()
         return
 
@@ -254,19 +210,19 @@ class Response(object):
 class Redirect(Response):
 
     def __init__(self, location):
-        Response.__init__(self, 302, Location=location)
+        Response.__init__(self, '302 Found', Location=location)
         return
 
 class NotFound(Response):
 
     def __init__(self):
-        Response.__init__(self, 404)
+        Response.__init__(self, '404 Not Found')
         return
 
 class InternalError(Response):
 
     def __init__(self):
-        Response.__init__(self, 500)
+        Response.__init__(self, '500 Internal Server Error')
         return
 
 
@@ -311,22 +267,23 @@ class WebApp(object):
             break
         if result is None:
             result = self.get_default(path, fields, environ)
-        elif not iterable(result):
-            result = [result]
-        for obj in result:
+        def f(obj):
             if isinstance(obj, Response):
-                status = '%d %s' % (obj.status_code, STATUS_CODE[obj.status_code])
-                start_response(status, obj.headers)
+                start_response(obj.status, obj.headers)
             elif isinstance(obj, Template):
                 for x in obj.render(codec=self.codec):
                     if isinstance(x, unicode):
                         x = x.encode(self.codec)
                     yield x
+            elif iterable(obj):
+                for x in obj:
+                    for y in f(x):
+                        yield y
             else:
                 if isinstance(obj, unicode):
                     obj = obj.encode(self.codec)
                 yield obj
-        return
+        return f(result)
 
     def get_default(self, path, fields, environ):
         return [NotFound(), '<html><body>not found</body></html>']
@@ -391,21 +348,25 @@ class SampleApp(WebApp):
     @GET('/')
     def index(self):
         yield Response()
-        yield Template('<html><body><p>index')
+        yield Template(
+            '<html><body><p>index')
         return
     
     @GET('/hello/(?P<name>.+)')
     def hello(self, name):
         yield Response()
-        yield Template('<html><body><p>hello $(name)', name=name)
+        yield Template(
+            '<html><body><p>hello $(name)',
+            name=name)
         return
     
     @GET('/search')
     def search(self, q):
         yield Response()
-        yield Template('<html><body>'
-                       '<h1>Search results for "$(q)"</h1>',
-                       q=q)
+        yield Template(
+            '<html><body>'
+            '<h1>Search results for "$(q)"</h1>',
+            q=q)
         return
 
 if __name__ == '__main__': sys.exit(main(SampleApp(), sys.argv))
