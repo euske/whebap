@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 ##
 ##  Whabapp - A Web application microframework
 ##
@@ -19,7 +20,7 @@ def q(s):
             replace("'",'&#39;'))
 
 # encode as a URL.
-URLENC = re.compile(r'[^a-zA-Z0-9_.-=]')
+URLENC = re.compile(r'[^a-zA-Z0-9_.-]')
 def urlenc(url, codec='utf-8'):
     def f(m):
         return '%%%02X' % ord(m.group(0))
@@ -200,7 +201,7 @@ class Response(object):
 
     def __init__(self, status='200 OK', content_type='text/html', **kwargs):
         self.status = status
-        self.headers = [('Content-Type', content_type)]+kwargs.items()
+        self.headers = [('Content-Type', content_type)]+list(kwargs.items())
         return
 
     def add_header(self, k, v):
@@ -249,7 +250,7 @@ class WebApp(object):
             params['_path'] = path
             params['_fields'] = fields
             params['_environ'] = environ
-            code = router.func.func_code
+            code = router.func.__code__
             args = code.co_varnames[:code.co_argcount]
             kwargs = {}
             for k in args[1:]:
@@ -292,7 +293,7 @@ class WebApp(object):
 # run_server
 def run_server(host, port, app):
     from wsgiref.simple_server import make_server
-    print >>sys.stderr, 'Serving on %r port %d...' % (host, port)
+    print('Serving on %r port %d...' % (host, port))
     httpd = make_server(host, port, app.run)
     httpd.serve_forever()
 
@@ -315,7 +316,7 @@ def run_httpcgi(app):
 def main(app, argv):
     import getopt
     def usage():
-        print 'usage: %s [-d] [-s] [host [port]]' % argv[0]
+        print('usage: %s [-d] [-s] [host [port]]' % argv[0])
         return 100
     try:
         (opts, args) = getopt.getopt(argv[1:], 'ds')
