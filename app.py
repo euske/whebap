@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 ##
-##  Whabapp - A Web application microframework
+##  Whebap - A Web application microframework
 ##
 ##  usage: $ python app.py -s localhost 8080
 ##
@@ -350,7 +350,11 @@ class SampleApp(WebApp):
     def index(self):
         yield Response()
         yield Template(
-            '<html><body><p>index')
+            '<html><body><p>index',
+            '<p><a href="/hello/you">hello you</a>',
+            '<form action="/search">',
+            '<input name=q><input type=submit value=Search>',
+            '</form>')
         return
     
     @GET('/hello/(?P<name>.+)')
