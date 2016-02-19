@@ -11,7 +11,7 @@ import cgi
 
 # quote HTML metacharacters.
 def q(s):
-    assert isinstance(s, basestring), s
+    assert isinstance(s, str), s
     return (s.
             replace('&','&amp;').
             replace('>','&gt;').
@@ -112,7 +112,9 @@ class Template(object):
                     raise ValueError
                 elif self.debug:
                     yield '[ERROR: Dictionary included]'
-            elif isinstance(value, basestring):
+            elif isinstance(value, bytes):
+                yield value
+            elif isinstance(value, str):
                 if quote:
                     yield q(value)
                 else:
@@ -126,7 +128,7 @@ class Template(object):
                         yield x
             else:
                 if quote:
-                    yield q(unicode(value))
+                    yield q(str(value))
                 else:
                     if 2 <= self.debug:
                         raise ValueError
@@ -269,11 +271,15 @@ class WebApp(object):
         if result is None:
             result = self.get_default(path, fields, environ)
         def f(obj):
-            if isinstance(obj, Response):
+            if isinstance(obj, bytes):
+                yield obj
+            elif isinstance(obj, str):
+                yield obj.encode(self.codec)
+            elif isinstance(obj, Response):
                 start_response(obj.status, obj.headers)
             elif isinstance(obj, Template):
                 for x in obj.render(codec=self.codec):
-                    if isinstance(x, unicode):
+                    if isinstance(x, str):
                         x = x.encode(self.codec)
                     yield x
             elif iterable(obj):
@@ -281,7 +287,7 @@ class WebApp(object):
                     for y in f(x):
                         yield y
             else:
-                if isinstance(obj, unicode):
+                if isinstance(obj, str):
                     obj = obj.encode(self.codec)
                 yield obj
         return f(result)
