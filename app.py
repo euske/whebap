@@ -193,6 +193,7 @@ class Router(object):
             return Router(method, regex, func)
         return wrapper
 
+def HEAD(pat): return Router.make_wrapper('HEAD', pat)
 def GET(pat): return Router.make_wrapper('GET', pat)
 def POST(pat): return Router.make_wrapper('POST', pat)
 
