@@ -82,7 +82,7 @@ class Template(object):
         return self.render()
 
     def __repr__(self):
-        return '<Template %r>' % self.objs
+        return ('<Template %r>' % self.objs)
 
     def __str__(self):
         return ''.join(self)
@@ -216,7 +216,8 @@ class NotFound(Response):
 class InternalError(Response):
 
     def __init__(self):
-        Response.__init__(self, '500 Internal Server Error')
+        Response.__init__(self, '500 Internal Server Error',
+                          content_type='text/plain')
         return
 
 
@@ -253,7 +254,9 @@ class WebApp(object):
                     kwargs[k] = params[k]
             break
         def expn(obj):
-            if isinstance(obj, Response):
+            if (isinstance(obj, Response) or
+                isinstance(obj, str) or
+                isinstance(obj, bytes)):
                 yield obj
             elif isinstance(obj, Template):
                 for x in obj.render(codec=self.codec):
@@ -278,8 +281,8 @@ class WebApp(object):
                     if resp is None:
                         raise ValueError('Multiple Responses: %r' % obj)
                     start_response(obj.status, obj.headers)
-                    for obj in resp:
-                        yield obj
+                    for x in resp:
+                        yield x
                     resp = None
                 else:
                     if isinstance(obj, bytes):
@@ -292,13 +295,20 @@ class WebApp(object):
                         yield obj
                     else:
                         resp.append(obj)
+            if resp is not None:
+                obj = InternalError()
+                start_response(obj.status, obj.headers)
+                if self.debug:
+                    yield ('No response: %r' % resp).encode('utf-8')
+                else:
+                    sys.stderr.write('No response: %r\n' % resp)
         except Exception as e:
             if resp is not None:
                 obj = InternalError()
                 start_response(obj.status, obj.headers)
             tb = traceback.format_exc()
             if self.debug:
-                yield ('<pre>%s</pre>' % q(tb)).encode('utf-8')
+                yield tb.encode('utf-8')
             else:
                 sys.stderr.write('Error: %s\n' % tb)
         return
