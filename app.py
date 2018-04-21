@@ -8,6 +8,7 @@
 import sys
 import re
 import cgi
+import traceback
 
 # quote HTML metacharacters.
 def q(s):
@@ -50,8 +51,6 @@ def closable(obj):
 ##
 class Template(object):
 
-    debug = 0
-
     def __init__(self, *args, **kwargs):
         if '_copyfrom' in kwargs:
             _copyfrom = kwargs['_copyfrom']
@@ -60,6 +59,8 @@ class Template(object):
         else:
             objs = []
             for line in args:
+                if not isinstance(line, str):
+                    raise ValueError('Non-string object in a template: %r' % (args,))
                 i0 = 0
                 for m in self._VARIABLE.finditer(line):
                     objs.append(line[i0:m.start(0)])
@@ -92,7 +93,7 @@ class Template(object):
         if closable(lines):
             lines.close()
         return template
-    
+
     def render(self, codec='utf-8', **kwargs):
         kwargs = mergedict(self.kwargs, kwargs)
         def render1(value, quote=False):
@@ -100,18 +101,12 @@ class Template(object):
                 pass
             elif isinstance(value, Template):
                 if quote:
-                    if 2 <= self.debug:
-                        raise ValueError
-                    elif self.debug:
-                        yield '[ERROR: Template in a quoted context]'
+                    raise ValueError('Template in a quoted context: %r' % self)
                 else:
                     for x in value.render(codec=codec, **kwargs):
                         yield x
             elif isinstance(value, dict):
-                if 2 <= self.debug:
-                    raise ValueError
-                elif self.debug:
-                    yield '[ERROR: Dictionary included]'
+                raise ValueError('Dictionary not allowed: %r' % self)
             elif isinstance(value, bytes):
                 yield value
             elif isinstance(value, str):
@@ -126,14 +121,10 @@ class Template(object):
                 for obj1 in value:
                     for x in render1(obj1, quote=quote):
                         yield x
+            elif quote:
+                yield q(str(value))
             else:
-                if quote:
-                    yield q(str(value))
-                else:
-                    if 2 <= self.debug:
-                        raise ValueError
-                    elif self.debug:
-                        yield '[ERROR: Non-string object in a non-quoted context]'
+                raise ValueError('Non-string object in a non-quoted context: %r' % self)
             return
         for obj in self.objs:
             if isinstance(obj, self.Variable):
@@ -143,8 +134,7 @@ class Template(object):
                 elif k in self.kwargs:
                     value = self.kwargs[k]
                 else:
-                    yield '[notfound:%s]' % k
-                    continue
+                    raise ValueError('Parameter not found: %r in %r' % (k, self))
                 if obj.type == '(':
                     for x in render1(value, quote=True):
                         yield x
@@ -159,14 +149,14 @@ class Template(object):
         return
 
     _VARIABLE = re.compile(r'\$(\(\w+\)|\[\w+\]|<\w+>)')
-    
+
     class Variable(object):
-        
+
         def __init__(self, type, name):
             self.type = type
             self.name = name
             return
-        
+
         def __repr__(self):
             if self.type == '(':
                 return '$(%s)' % self.name
@@ -174,12 +164,12 @@ class Template(object):
                 return '$[%s]' % self.name
             else:
                 return '$<%s>' % self.name
-    
+
 
 ##  Router
 ##
 class Router(object):
-    
+
     def __init__(self, method, regex, func):
         self.method = method
         self.regex = regex
@@ -236,13 +226,13 @@ class WebApp(object):
 
     debug = 0
     codec = 'utf-8'
-    
+
     def run(self, environ, start_response):
         method = environ.get('REQUEST_METHOD', 'GET')
         path = environ.get('PATH_INFO', '/')
         fp = environ.get('wsgi.input')
         fields = cgi.FieldStorage(fp=fp, environ=environ)
-        result = None
+        router = kwargs = None
         for attr in dir(self):
             router = getattr(self, attr)
             if not isinstance(router, Router): continue
@@ -261,23 +251,10 @@ class WebApp(object):
                     kwargs[k] = fields.getvalue(k)
                 elif k in params:
                     kwargs[k] = params[k]
-            try:
-                result = router.func(self, **kwargs)
-            except TypeError:
-                if 2 <= self.debug:
-                    raise
-                elif self.debug:
-                    result = [InternalError()]
             break
-        if result is None:
-            result = self.get_default(path, fields, environ)
-        def f(obj):
-            if isinstance(obj, bytes):
+        def expn(obj):
+            if isinstance(obj, Response):
                 yield obj
-            elif isinstance(obj, str):
-                yield obj.encode(self.codec)
-            elif isinstance(obj, Response):
-                start_response(obj.status, obj.headers)
             elif isinstance(obj, Template):
                 for x in obj.render(codec=self.codec):
                     if isinstance(x, str):
@@ -285,13 +262,46 @@ class WebApp(object):
                     yield x
             elif iterable(obj):
                 for x in obj:
-                    for y in f(x):
+                    for y in expn(x):
                         yield y
             else:
-                if isinstance(obj, str):
-                    obj = obj.encode(self.codec)
                 yield obj
-        return f(result)
+            return
+        resp = []
+        try:
+            if kwargs is None:
+                result = self.get_default(path, fields, environ)
+            else:
+                result = router.func(self, **kwargs)
+            for obj in expn(result):
+                if isinstance(obj, Response):
+                    if resp is None:
+                        raise ValueError('Multiple Responses: %r' % obj)
+                    start_response(obj.status, obj.headers)
+                    for obj in resp:
+                        yield obj
+                    resp = None
+                else:
+                    if isinstance(obj, bytes):
+                        pass
+                    elif isinstance(obj, str):
+                        obj = obj.encode(self.codec)
+                    else:
+                        obj = str(obj).encode(self.codec)
+                    if resp is None:
+                        yield obj
+                    else:
+                        resp.append(obj)
+        except Exception as e:
+            if resp is not None:
+                obj = InternalError()
+                start_response(obj.status, obj.headers)
+            tb = traceback.format_exc()
+            if self.debug:
+                yield ('<pre>%s</pre>' % q(tb)).encode('utf-8')
+            else:
+                sys.stderr.write('Error: %s\n' % tb)
+        return
 
     def get_default(self, path, fields, environ):
         return [NotFound(), '<html><body>not found</body></html>']
@@ -334,7 +344,6 @@ def main(app, argv):
     for (k, v) in opts:
         if k == '-d': debug += 1
         elif k == '-s': server = True
-    Template.debug = debug
     WebApp.debug = debug
     if server:
         host = ''
@@ -363,7 +372,7 @@ class SampleApp(WebApp):
             '<input name=q><input type=submit value=Search>',
             '</form>')
         return
-    
+
     @GET('/hello/(?P<name>.+)')
     def hello(self, name):
         yield Response()
@@ -371,7 +380,7 @@ class SampleApp(WebApp):
             '<html><body><p>hello $(name)',
             name=name)
         return
-    
+
     @GET('/search')
     def search(self, q):
         yield Response()
