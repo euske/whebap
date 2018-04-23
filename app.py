@@ -6,6 +6,7 @@
 ##  usage: $ python app.py -s localhost 8080
 ##
 import sys
+import os
 import re
 import cgi
 import traceback
@@ -314,7 +315,7 @@ class WebApp(object):
         return
 
     def get_default(self, path, fields, environ):
-        return [NotFound(), '<html><body>not found</body></html>']
+        return [NotFound(), '<html><body>not found</body></html>\n']
 
 
 # run_server
@@ -343,27 +344,30 @@ def run_httpcgi(app):
 def main(app, argv):
     import getopt
     def usage():
-        print('usage: %s [-d] [-s] [host [port]]' % argv[0])
+        print('usage: %s [-d] [-s [host]:port] [method [url]]' % argv[0])
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'ds')
+        (opts, args) = getopt.getopt(argv[1:], 'ds:')
     except getopt.GetoptError:
         return usage()
-    server = False
+    host = None
+    port = None
     debug = 0
     for (k, v) in opts:
         if k == '-d': debug += 1
-        elif k == '-s': server = True
+        elif k == '-s':
+            (host,_,port) = v.partition(':')
     WebApp.debug = debug
-    if server:
-        host = ''
-        port = 8080
-        if args:
-            host = args.pop(0)
-        if args:
-            port = int(args.pop(0))
-        run_server(host, port, app)
+    if port is not None:
+        run_server(host, int(port), app)
     else:
+        if args:
+            os.environ['REQUEST_METHOD'] = args.pop(0)
+        if args:
+            url = args.pop(0)
+            (path,_,qs) = url.partition('?')
+            os.environ['PATH_INFO'] = path
+            os.environ['QUERY_STRING'] = qs
         run_cgi(app)
     return
 
@@ -380,14 +384,14 @@ class SampleApp(WebApp):
             '<p><a href="/hello/you">hello you</a>',
             '<form action="/search">',
             '<input name=q><input type=submit value=Search>',
-            '</form>')
+            '</form>\n')
         return
 
     @GET('/hello/(?P<name>.+)')
     def hello(self, name):
         yield Response()
         yield Template(
-            '<html><body><p>hello $(name)',
+            '<html><body><p>hello $(name)\n',
             name=name)
         return
 
@@ -396,7 +400,7 @@ class SampleApp(WebApp):
         yield Response()
         yield Template(
             '<html><body>'
-            '<h1>Search results for "$(q)"</h1>',
+            '<h1>Search results for "$(q)"</h1>\n',
             q=q)
         return
 
